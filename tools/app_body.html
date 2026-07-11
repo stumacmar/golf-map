@@ -98,6 +98,20 @@ body{
 }
 .chip:active{transform:scale(.96)}
 .chip .g{color:var(--walkway);font-weight:700}
+.chip.on{background:var(--walkway);border-color:rgba(255,255,255,.3);color:#171410}
+.chip.on .g{color:#171410}
+
+/* ---------- bar pins ---------- */
+.bar-pin{
+  width:34px;height:34px;border-radius:50% 50% 50% 4px;
+  background:var(--walkway);
+  border:2px solid #fff;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+  display:flex;align-items:center;justify-content:center;
+  font-size:17px;line-height:1;
+  transform:translate(-17px,-17px) rotate(-8deg);
+  cursor:pointer;
+}
 
 /* ---------- right FABs ---------- */
 #fabs{
@@ -251,6 +265,7 @@ body{
 </div>
 
 <div id="chips">
+  <div class="chip" id="chip-bars"><span class="g">&#127866;</span>Bars</div>
   <div class="chip" data-goto="1190,345,0.6"><span class="g">&#9873;</span>Clubhouse</div>
   <div class="chip" data-goto="1258,372,0.9"><span class="g">&#9971;</span>18th Green</div>
   <div class="chip" data-goto="821,484,0.6"><span class="g">&#9733;</span>Fanzone</div>
@@ -558,26 +573,61 @@ function clearMeasure(){
   if (measureLine){ map.removeLayer(measureLine); measureLine = null; }
   if (measureMarker){ map.removeLayer(measureMarker); measureMarker = null; }
 }
+function showMeasure(targetLL, label){
+  clearMeasure();
+  var name = label ? '<small>' + label + ' &middot; </small>' : '';
+  var html;
+  if (lastPx){
+    var p = latLngToPx(targetLL);
+    var meters = Math.hypot(p[0]-lastPx[0], p[1]-lastPx[1]) / PX_PER_M;
+    var yards = meters * 1.09361;
+    measureLine = L.polyline([pxToLatLng(lastPx[0], lastPx[1]), targetLL],
+      { color:'#cd7f35', weight:2.5, dashArray:'6 7', opacity:.95, interactive:false }).addTo(map);
+    html = yards >= 1000
+      ? name + '<span class="yd">' + (yards/1760).toFixed(2) + ' mi</span> <small>from you</small>'
+      : name + '<span class="yd">' + Math.round(yards) + ' yds</span> <small>' + Math.round(meters) + ' m from you</small>';
+  } else if (label){
+    html = '<span class="yd">' + label + '</span>';
+  } else {
+    return;
+  }
+  measureMarker = L.marker(targetLL, { interactive:false, zIndexOffset:1200, icon: L.divIcon({ className:'', iconSize:[0,0], html:'<div class="measure-bubble">' + html + '</div>' }) }).addTo(map);
+  clearTimeout(measureTimer);
+  measureTimer = setTimeout(clearMeasure, 7000);
+}
 map.on('click', function(e){
   if (calMode) return;
-  if (!lastPx){ return; }
-  var p = latLngToPx(e.latlng);
-  var dpx = Math.hypot(p[0]-lastPx[0], p[1]-lastPx[1]);
-  var meters = dpx / PX_PER_M;
-  var yards = meters * 1.09361;
-  var txt = yards >= 1000
-    ? (yards/1760).toFixed(2) + ' mi'
-    : Math.round(yards) + '';
-  clearMeasure();
-  measureLine = L.polyline([pxToLatLng(lastPx[0], lastPx[1]), e.latlng],
-    { color:'#cd7f35', weight:2.5, dashArray:'6 7', opacity:.95, interactive:false }).addTo(map);
-  var html = yards >= 1000
-    ? '<span class="yd">' + txt + '</span> <small>from you</small>'
-    : '<span class="yd">' + txt + ' yds</span> <small>' + Math.round(meters) + ' m from you</small>';
-  measureMarker = L.marker(e.latlng, { interactive:false, icon: L.divIcon({ className:'', iconSize:[0,0], html:'<div class="measure-bubble">' + html + '</div>' }) }).addTo(map);
-  clearTimeout(measureTimer);
-  measureTimer = setTimeout(clearMeasure, 6000);
+  showMeasure(e.latlng, null);
 });
+
+/* ============ bars ============ */
+var BARS = [
+  { x:1097, y:214,  name:'Bar &mdash; The Thistle' },
+  { x:815,  y:495,  name:'Fanzone bars (Buffalo Trace &amp; Stella Artois)' },
+  { x:1657, y:257,  name:'Bar &mdash; holes 1&ndash;2' },
+  { x:2032, y:349,  name:'Bar &mdash; 3rd hole, by the beach' },
+  { x:1535, y:660,  name:'Bar &mdash; 17th hole' },
+  { x:1355, y:758,  name:'Bar &mdash; food court' }
+];
+var barLayer = L.layerGroup(BARS.map(function(b){
+  var m = L.marker(pxToLatLng(b.x, b.y), {
+    icon: L.divIcon({ className:'', iconSize:[0,0], html:'<div class="bar-pin">&#127866;</div>' }),
+    keyboard: false
+  });
+  m.on('click', function(){ showMeasure(pxToLatLng(b.x, b.y), b.name); });
+  return m;
+}));
+var barsOn = false;
+try { barsOn = localStorage.getItem('mgm-bars') === '1'; } catch(e){}
+function setBars(on, silent){
+  barsOn = on;
+  document.getElementById('chip-bars').classList.toggle('on', on);
+  if (on) barLayer.addTo(map); else { map.removeLayer(barLayer); clearMeasure(); }
+  try { localStorage.setItem('mgm-bars', on ? '1' : '0'); } catch(e){}
+  if (!silent && on) toast('6 bars on the map — tap a pin for the distance');
+}
+document.getElementById('chip-bars').addEventListener('click', function(){ setBars(!barsOn); });
+if (barsOn) setBars(true, true);
 
 /* ============ quick-jump chips ============ */
 document.querySelectorAll('.chip[data-goto]').forEach(function(ch){
