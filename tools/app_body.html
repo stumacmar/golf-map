@@ -1,0 +1,600 @@
+<title>Mark's Golf Map</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<style>
+/*__LEAFLET_CSS__*/
+</style>
+<style>
+:root{
+  --ink:#131312;
+  --ink-2:#1e1d1a;
+  --linen:#f2ede2;
+  --walkway:#cd7f35;
+  --walkway-deep:#a35f1f;
+  --turf:#5a8a4f;
+  --gps:#2f9bff;
+  --danger:#d0543a;
+  --muted:#98917f;
+  --hairline:rgba(242,237,226,.14);
+  --shadow:0 6px 24px rgba(0,0,0,.45);
+  --serif:"Palatino","Palatino Linotype","Book Antiqua",Georgia,serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:var(--sans);
+  background:var(--ink);
+  color:var(--linen);
+  overflow:hidden;
+  -webkit-tap-highlight-color:transparent;
+  height:100dvh;
+}
+#map{position:absolute;inset:0;background:#101411;z-index:1}
+.leaflet-container{background:#101411;font:inherit}
+
+/* ---------- top bar ---------- */
+#topbar{
+  position:absolute;top:0;left:0;right:0;z-index:1000;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:calc(env(safe-area-inset-top, 0px) + 8px) 14px 8px 14px;
+  background:linear-gradient(to bottom, rgba(19,19,18,.92) 0%, rgba(19,19,18,.78) 70%, rgba(19,19,18,0) 100%);
+  pointer-events:none;
+}
+#topbar > *{pointer-events:auto}
+.wordmark{display:flex;flex-direction:column;line-height:1.05;user-select:none}
+.wordmark .title{
+  font-family:var(--serif);
+  font-size:21px;font-weight:700;letter-spacing:.04em;
+  font-variant:small-caps;
+  color:var(--linen);
+  text-shadow:0 1px 3px rgba(0,0,0,.6);
+}
+.wordmark .sub{
+  font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--walkway);font-weight:600;margin-top:2px;
+  text-shadow:0 1px 2px rgba(0,0,0,.6);
+}
+#gpschip{
+  display:flex;align-items:center;gap:7px;
+  background:rgba(30,29,26,.88);
+  border:1px solid var(--hairline);
+  border-radius:999px;
+  padding:7px 12px;
+  font-family:var(--mono);font-size:12px;
+  color:var(--linen);
+  box-shadow:var(--shadow);
+  white-space:nowrap;
+}
+#gpsdotchip{width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none;transition:background .3s}
+#gpschip.ok #gpsdotchip{background:var(--turf)}
+#gpschip.poor #gpsdotchip{background:var(--walkway)}
+#gpschip.err #gpsdotchip{background:var(--danger)}
+@media (prefers-reduced-motion: no-preference){
+  #gpschip.wait #gpsdotchip{animation:chipblink 1.2s ease-in-out infinite}
+}
+@keyframes chipblink{50%{opacity:.25}}
+
+/* ---------- bottom chips ---------- */
+#chips{
+  position:absolute;left:0;right:0;z-index:1000;
+  bottom:calc(env(safe-area-inset-bottom, 0px) + 10px);
+  display:flex;gap:8px;overflow-x:auto;
+  padding:8px 14px;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+}
+#chips::-webkit-scrollbar{display:none}
+.chip{
+  flex:none;display:flex;align-items:center;gap:6px;
+  background:rgba(30,29,26,.9);
+  color:var(--linen);
+  border:1px solid var(--hairline);
+  border-radius:999px;
+  padding:9px 14px;
+  font-size:13px;font-weight:600;letter-spacing:.01em;
+  box-shadow:var(--shadow);
+  cursor:pointer;user-select:none;
+}
+.chip:active{transform:scale(.96)}
+.chip .g{color:var(--walkway);font-weight:700}
+
+/* ---------- right FABs ---------- */
+#fabs{
+  position:absolute;right:12px;z-index:1000;
+  bottom:calc(env(safe-area-inset-bottom, 0px) + 72px);
+  display:flex;flex-direction:column;gap:10px;
+}
+.fab{
+  width:48px;height:48px;border-radius:50%;
+  background:rgba(30,29,26,.92);
+  border:1px solid var(--hairline);
+  box-shadow:var(--shadow);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;user-select:none;
+  color:var(--linen);
+}
+.fab:active{transform:scale(.94)}
+.fab svg{width:22px;height:22px;display:block}
+.fab.on{background:var(--gps);border-color:rgba(255,255,255,.35)}
+.fab.on svg{color:#fff}
+#fab-cal.on{background:var(--walkway)}
+
+/* ---------- banners ---------- */
+#banner{
+  position:absolute;left:50%;transform:translateX(-50%);
+  top:calc(env(safe-area-inset-top, 0px) + 58px);
+  z-index:1100;max-width:min(92vw,430px);
+  background:rgba(30,29,26,.95);
+  border:1px solid var(--hairline);
+  border-left:3px solid var(--walkway);
+  border-radius:12px;
+  padding:11px 14px;
+  font-size:13.5px;line-height:1.45;
+  box-shadow:var(--shadow);
+  display:none;
+}
+#banner.show{display:block}
+#banner .row{display:flex;gap:8px;margin-top:10px}
+#banner button{
+  flex:1;border:0;border-radius:8px;padding:9px 10px;
+  font-size:13px;font-weight:700;cursor:pointer;
+  font-family:var(--sans);
+}
+#banner .primary{background:var(--walkway);color:#171410}
+#banner .ghost{background:rgba(242,237,226,.1);color:var(--linen)}
+
+/* ---------- measure bubble ---------- */
+.measure-bubble{
+  background:rgba(19,19,18,.92);
+  border:1px solid var(--walkway);
+  border-radius:10px;
+  color:var(--linen);
+  font-family:var(--mono);
+  font-size:13px;font-weight:600;
+  padding:6px 10px;
+  white-space:nowrap;
+  box-shadow:var(--shadow);
+  transform:translate(-50%,-135%);
+  position:absolute;
+}
+.measure-bubble .yd{color:var(--walkway);font-size:15px}
+.measure-bubble small{color:var(--muted);font-family:var(--sans);font-weight:400}
+
+/* ---------- GPS marker ---------- */
+.gps-marker{pointer-events:none}
+.gps-wrap{position:relative;width:0;height:0}
+.gps-cone{
+  position:absolute;left:-28px;top:-28px;width:56px;height:56px;
+  opacity:0;transition:opacity .3s;
+}
+.gps-cone.show{opacity:1}
+.gps-dot{
+  position:absolute;left:-9px;top:-9px;
+  width:18px;height:18px;border-radius:50%;
+  background:var(--gps);
+  border:3px solid #fff;
+  box-shadow:0 0 10px rgba(0,0,0,.55);
+}
+.gps-pulse{
+  position:absolute;left:-9px;top:-9px;
+  width:18px;height:18px;border-radius:50%;
+  background:rgba(47,155,255,.55);
+}
+@media (prefers-reduced-motion: no-preference){
+  .gps-pulse{animation:gpspulse 2.4s ease-out infinite}
+}
+@keyframes gpspulse{
+  0%{transform:scale(1);opacity:.8}
+  70%{transform:scale(3.2);opacity:0}
+  100%{transform:scale(3.2);opacity:0}
+}
+
+/* ---------- off-map arrow ---------- */
+#offmap{
+  position:absolute;z-index:1050;display:none;
+  width:44px;height:44px;border-radius:50%;
+  background:var(--gps);
+  border:2px solid #fff;
+  box-shadow:var(--shadow);
+  align-items:center;justify-content:center;
+  pointer-events:none;
+}
+#offmap svg{width:22px;height:22px;color:#fff}
+
+/* ---------- toast ---------- */
+#toast{
+  position:absolute;left:50%;transform:translateX(-50%);
+  bottom:calc(env(safe-area-inset-bottom, 0px) + 128px);
+  z-index:1200;
+  background:rgba(19,19,18,.95);
+  border:1px solid var(--hairline);
+  border-radius:10px;
+  color:var(--linen);
+  font-size:13px;
+  padding:10px 16px;
+  box-shadow:var(--shadow);
+  opacity:0;transition:opacity .25s;
+  pointer-events:none;
+  max-width:88vw;text-align:center;
+}
+#toast.show{opacity:1}
+
+.leaflet-control-attribution{
+  background:rgba(19,19,18,.7)!important;color:var(--muted)!important;
+  font-size:9px!important;
+}
+.leaflet-control-attribution a{color:var(--muted)!important}
+</style>
+
+<div id="map"></div>
+
+<div id="topbar">
+  <div class="wordmark">
+    <span class="title">Mark&rsquo;s Golf Map</span>
+    <span class="sub">Genesis Scottish Open &middot; The Renaissance Club</span>
+  </div>
+  <div id="gpschip" class="wait"><span id="gpsdotchip"></span><span id="gpstext">finding you&hellip;</span></div>
+</div>
+
+<div id="banner"></div>
+<div id="offmap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></div>
+<div id="toast"></div>
+
+<div id="fabs">
+  <div class="fab" id="fab-follow" role="button" aria-label="Follow my position" tabindex="0">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="7.5"/><path d="M12 1.5v3.5M12 19v3.5M1.5 12H5M19 12h3.5" stroke-linecap="round"/></svg>
+  </div>
+  <div class="fab" id="fab-cal" role="button" aria-label="Calibrate position" tabindex="0">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4.5l5 5L8 21H3v-5L14.5 4.5z"/><path d="M12 7l5 5"/></svg>
+  </div>
+</div>
+
+<div id="chips">
+  <div class="chip" data-goto="1190,345,0.6"><span class="g">&#9873;</span>Clubhouse</div>
+  <div class="chip" data-goto="1258,372,0.9"><span class="g">&#9971;</span>18th Green</div>
+  <div class="chip" data-goto="821,484,0.6"><span class="g">&#9733;</span>Fanzone</div>
+  <div class="chip" data-goto="2100,712,0.4"><span class="g">&#127754;</span>Beach holes 4&ndash;7</div>
+  <div class="chip" data-goto="653,477,0.6"><span class="g">&#8594;</span>Spectator entrance</div>
+  <div class="chip" data-goto="938,1195,0.4"><span class="g">&#128663;</span>Main entrance</div>
+  <div class="chip" id="chip-whole"><span class="g">&#8853;</span>Whole course</div>
+</div>
+
+<script>
+/*__LEAFLET_JS__*/
+</script>
+<script>
+var IMG_DATA = /*__IMG_DATA__*/;
+</script>
+<script>
+(function(){
+"use strict";
+
+/* ============ georeference (fitted offline: similarity + thin-plate spline) ============ */
+var T = /*__TRANSFORM_JSON__*/;
+var IMG_W = 2200, IMG_H = 1310;
+var PX_PER_M = 0.865;
+
+function lonLatToUV(lat, lon){
+  return [ (lon - T.lon0) * T.mlon, (lat - T.lat0) * T.mlat ];
+}
+function tpsPhi(r){ return r > 1e-9 ? r*r*Math.log(r) : 0; }
+function worldToPx(lat, lon){
+  var p = lonLatToUV(lat, lon);
+  var qx = T.M[0][0]*p[0] + T.M[0][1]*p[1] + T.t[0];
+  var qy = T.M[1][0]*p[0] + T.M[1][1]*p[1] + T.t[1];
+  var ox = T.aff[0][0] + T.aff[1][0]*qx + T.aff[2][0]*qy;
+  var oy = T.aff[0][1] + T.aff[1][1]*qx + T.aff[2][1]*qy;
+  for (var i=0;i<T.ctrl.length;i++){
+    var dx = qx - T.ctrl[i][0], dy = qy - T.ctrl[i][1];
+    var ph = tpsPhi(Math.sqrt(dx*dx+dy*dy));
+    ox += T.w[i][0]*ph; oy += T.w[i][1]*ph;
+  }
+  return [ qx + ox + nudge[0], qy + oy + nudge[1] ];
+}
+/* image-space direction of true north / east (for the heading cone) */
+var NORTH_VEC = (function(){ var n=[T.M[0][1],T.M[1][1]], l=Math.hypot(n[0],n[1]); return [n[0]/l,n[1]/l]; })();
+var EAST_VEC  = (function(){ var e=[T.M[0][0],T.M[1][0]], l=Math.hypot(e[0],e[1]); return [e[0]/l,e[1]/l]; })();
+
+/* user nudge calibration (stored) */
+var nudge = [0,0];
+try { var s = localStorage.getItem('mgm-nudge'); if (s) nudge = JSON.parse(s); } catch(e){}
+
+/* ============ map setup ============ */
+var map = L.map('map', {
+  crs: L.CRS.Simple,
+  zoomSnap: 0.25,
+  zoomDelta: 0.5,
+  minZoom: -3,
+  maxZoom: 2.5,
+  attributionControl: true,
+  zoomControl: false,
+  inertia: true
+});
+map.attributionControl.setPrefix(false);
+map.attributionControl.addAttribution('Course board &copy; Genesis Scottish Open &middot; georef via OpenStreetMap');
+
+var b0 = map.unproject([0,0], 0), b1 = map.unproject([IMG_W, IMG_H], 0);
+var bounds = L.latLngBounds(b0, b1);
+L.imageOverlay(IMG_DATA, bounds).addTo(map);
+map.fitBounds(bounds);
+map.setMaxBounds(bounds.pad(0.25));
+setTimeout(function(){
+  var fitZ = map.getBoundsZoom(bounds);
+  map.setMinZoom(fitZ - 0.25);
+}, 50);
+
+function pxToLatLng(x, y){ return map.unproject([x, y], 0); }
+function latLngToPx(ll){ var p = map.project(ll, 0); return [p.x, p.y]; }
+
+/* ============ UI helpers ============ */
+var $ = function(id){ return document.getElementById(id); };
+var toastTimer = null;
+function toast(msg, ms){
+  var t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.classList.remove('show'); }, ms || 2600);
+}
+function setChip(state, text){
+  var c = $('gpschip');
+  c.className = state;
+  $('gpstext').textContent = text;
+}
+
+/* ============ GPS marker ============ */
+var gpsIcon = L.divIcon({ className:'gps-marker', iconSize:[0,0], html:
+  '<div class="gps-wrap">' +
+    '<svg class="gps-cone" id="gpscone" viewBox="-28 -28 56 56">' +
+      '<defs><linearGradient id="coneg" x1="0" y1="1" x2="0" y2="0">' +
+      '<stop offset="0" stop-color="rgba(47,155,255,.75)"/><stop offset="1" stop-color="rgba(47,155,255,0)"/></linearGradient></defs>' +
+      '<path d="M0 0 L-11 -24 A 26 26 0 0 1 11 -24 Z" fill="url(#coneg)"/>' +
+    '</svg>' +
+    '<div class="gps-pulse"></div><div class="gps-dot"></div>' +
+  '</div>' });
+var gpsMarker = null, accCircle = null;
+var lastFix = null;      /* {lat, lon, acc, heading} */
+var lastPx = null;
+var follow = true;
+var headingDeg = null;
+
+function coneAngleFor(hdg){
+  var rad = hdg * Math.PI/180;
+  var dx = Math.cos(rad)*NORTH_VEC[0] + Math.sin(rad)*EAST_VEC[0];
+  var dy = Math.cos(rad)*NORTH_VEC[1] + Math.sin(rad)*EAST_VEC[1];
+  return Math.atan2(dy, dx)*180/Math.PI + 90;
+}
+function renderFix(){
+  if (!lastFix) return;
+  var px = worldToPx(lastFix.lat, lastFix.lon);
+  lastPx = px;
+  var onMap = px[0] > -60 && px[0] < IMG_W+60 && px[1] > -60 && px[1] < IMG_H+60;
+  var ll = pxToLatLng(px[0], px[1]);
+  if (!gpsMarker){
+    gpsMarker = L.marker(ll, { icon: gpsIcon, interactive:false, zIndexOffset:1000 }).addTo(map);
+    accCircle = L.circle(ll, { radius: 10, color:'#2f9bff', weight:1, opacity:.5, fillColor:'#2f9bff', fillOpacity:.12, interactive:false }).addTo(map);
+    if (onMap && follow) map.setView(ll, Math.max(map.getZoom(), 0.25), { animate:true });
+  } else {
+    gpsMarker.setLatLng(ll); accCircle.setLatLng(ll);
+  }
+  accCircle.setRadius(Math.max(6, lastFix.acc * PX_PER_M));
+  var cone = document.getElementById('gpscone');
+  if (cone){
+    var h = (lastFix.heading != null && !isNaN(lastFix.heading)) ? lastFix.heading : headingDeg;
+    if (h != null){ cone.classList.add('show'); cone.style.transform = 'rotate(' + coneAngleFor(h).toFixed(1) + 'deg)'; }
+    else cone.classList.remove('show');
+  }
+  if (follow && onMap) map.panTo(ll, { animate:true, duration:.5 });
+  updateOffmapArrow(onMap, ll);
+}
+function updateOffmapArrow(onMap, ll){
+  var el = $('offmap');
+  if (!lastPx){ el.style.display='none'; return; }
+  var inView = map.getBounds().contains(ll);
+  if (onMap && inView){ el.style.display = 'none'; return; }
+  /* point from screen centre toward the fix */
+  var size = map.getSize();
+  var pt = map.latLngToContainerPoint(ll);
+  var cx = size.x/2, cy = size.y/2;
+  var vx = pt.x - cx, vy = pt.y - cy;
+  var ang = Math.atan2(vy, vx);
+  var margin = 34;
+  var rx = cx - margin, ry = cy - margin;
+  var t = 1 / Math.max(Math.abs(vx)/rx || 1e-9, Math.abs(vy)/ry || 1e-9);
+  var ex = cx + vx*t, ey = cy + vy*t;
+  el.style.display = 'flex';
+  el.style.left = (ex-22) + 'px';
+  el.style.top  = (ey-22) + 'px';
+  el.firstElementChild.style.transform = 'rotate(' + (ang*180/Math.PI + 90) + 'deg)';
+}
+map.on('move', function(){ if (lastPx) updateOffmapArrow(true, pxToLatLng(lastPx[0], lastPx[1])); });
+
+/* ============ geolocation ============ */
+var demo = /[?&]demo=1/.test(location.search);
+var watchId = null;
+function startGPS(){
+  if (demo){ startDemo(); return; }
+  if (!('geolocation' in navigator)){
+    setChip('err', 'no GPS');
+    toast('This browser has no location access. Open the page full-screen in Safari.', 5200);
+    return;
+  }
+  watchId = navigator.geolocation.watchPosition(function(pos){
+    lastFix = {
+      lat: pos.coords.latitude, lon: pos.coords.longitude,
+      acc: pos.coords.accuracy || 30,
+      heading: (pos.coords.heading != null && pos.coords.speed > 0.4) ? pos.coords.heading : null
+    };
+    var a = Math.round(lastFix.acc);
+    setChip(a <= 25 ? 'ok' : 'poor', '±' + a + ' m');
+    renderFix();
+  }, function(err){
+    if (err.code === 1){
+      setChip('err', 'blocked');
+      toast('Location is blocked. Allow it in Settings › Safari › Location, or open the page full-screen.', 6000);
+    } else {
+      setChip('err', 'no signal');
+    }
+  }, { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
+}
+
+/* demo mode: simulated stroll for testing indoors */
+function startDemo(){
+  var route = [
+    [56.05121,-2.81287],[56.05111,-2.81065],[56.05223,-2.81218],[56.05447,-2.80595],
+    [56.05567,-2.80691],[56.05871,-2.80841],[56.06048,-2.80704],[56.06189,-2.80477],
+    [56.06166,-2.80213],[56.05797,-2.80776],[56.05500,-2.80640],[56.04997,-2.80324],
+    [56.04912,-2.80494],[56.05081,-2.81096]
+  ];
+  var i = 0, f = 0, STEPS = 60;
+  setChip('ok', 'demo ±5 m');
+  setInterval(function(){
+    var a = route[i], b = route[(i+1)%route.length];
+    var lat = a[0] + (b[0]-a[0])*f/STEPS, lon = a[1] + (b[1]-a[1])*f/STEPS;
+    var hdg = Math.atan2((b[1]-a[1])*Math.cos(lat*Math.PI/180), b[0]-a[0]) * 180/Math.PI;
+    lastFix = { lat:lat, lon:lon, acc:5, heading:(hdg+360)%360 };
+    renderFix();
+    if (++f > STEPS){ f = 0; i = (i+1)%route.length; }
+  }, 200);
+}
+
+/* ============ compass heading (iOS) ============ */
+function enableCompass(){
+  function onOri(e){
+    var h = null;
+    if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;
+    else if (e.absolute && e.alpha != null) h = 360 - e.alpha;
+    if (h != null){ headingDeg = h; if (lastFix && lastFix.heading == null) renderFix(); }
+  }
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+    DeviceOrientationEvent.requestPermission().then(function(state){
+      if (state === 'granted') window.addEventListener('deviceorientation', onOri);
+    }).catch(function(){});
+  } else if ('ondeviceorientationabsolute' in window){
+    window.addEventListener('deviceorientationabsolute', onOri);
+  } else {
+    window.addEventListener('deviceorientation', onOri);
+  }
+}
+
+/* ============ follow mode + wake lock ============ */
+var wakeLock = null;
+function acquireWake(){
+  if (!('wakeLock' in navigator)) return;
+  navigator.wakeLock.request('screen').then(function(wl){ wakeLock = wl; }).catch(function(){});
+}
+document.addEventListener('visibilitychange', function(){
+  if (document.visibilityState === 'visible' && follow) acquireWake();
+});
+function setFollow(on, silent){
+  follow = on;
+  $('fab-follow').classList.toggle('on', on);
+  if (on){
+    enableCompass();
+    acquireWake();
+    if (lastFix) renderFix();
+    if (!silent) toast('Following you — drag the map to look around');
+  } else {
+    if (wakeLock){ wakeLock.release().catch(function(){}); wakeLock = null; }
+  }
+}
+$('fab-follow').addEventListener('click', function(){
+  if (!follow && lastPx){
+    map.panTo(pxToLatLng(lastPx[0], lastPx[1]), { animate:true });
+  }
+  setFollow(!follow);
+});
+map.on('dragstart', function(){ if (follow && !calMode) setFollow(false, true); });
+
+/* ============ calibration (nudge) ============ */
+var calMode = false, calStartNudge = null;
+var banner = $('banner');
+function showBanner(html){ banner.innerHTML = html; banner.classList.add('show'); }
+function hideBanner(){ banner.classList.remove('show'); }
+
+$('fab-cal').addEventListener('click', function(){
+  if (calMode){ endCal(false); return; }
+  if (!lastPx){ toast('Wait for a GPS fix first'); return; }
+  calMode = true; calStartNudge = nudge.slice();
+  $('fab-cal').classList.add('on');
+  setFollow(false, true);
+  map.panTo(pxToLatLng(lastPx[0], lastPx[1]), { animate:true });
+  showBanner(
+    '<strong>Fine-tune your position.</strong> Stand somewhere you can identify (a tee, a gate, a stand), then <em>drag the map</em> so the blue dot sits exactly there.' +
+    '<div class="row"><button class="primary" id="cal-done">Done</button><button class="ghost" id="cal-reset">Reset</button><button class="ghost" id="cal-cancel">Cancel</button></div>'
+  );
+  document.getElementById('cal-done').onclick = function(){ endCal(true); };
+  document.getElementById('cal-cancel').onclick = function(){ endCal(false); };
+  document.getElementById('cal-reset').onclick = function(){
+    nudge = [0,0];
+    try{ localStorage.removeItem('mgm-nudge'); }catch(e){}
+    endCal(null);
+    toast('Calibration reset');
+  };
+});
+map.on('move', function(){
+  if (!calMode || !lastFix) return;
+  /* keep the dot pinned to screen centre: adjust nudge so dot = view centre */
+  var c = latLngToPx(map.getCenter());
+  var raw = (function(){ var save = nudge; nudge = [0,0]; var p = worldToPx(lastFix.lat, lastFix.lon); nudge = save; return p; })();
+  nudge = [ c[0] - raw[0], c[1] - raw[1] ];
+  renderFixNoPan();
+});
+function renderFixNoPan(){ var f = follow; follow = false; renderFix(); follow = f; }
+function endCal(save){
+  calMode = false;
+  $('fab-cal').classList.remove('on');
+  hideBanner();
+  if (save === false && calStartNudge) nudge = calStartNudge;
+  if (save === true){
+    try{ localStorage.setItem('mgm-nudge', JSON.stringify(nudge)); }catch(e){}
+    toast('Saved — map is now tuned to you');
+  }
+  renderFixNoPan();
+}
+
+/* ============ tap to measure ============ */
+var measureLine = null, measureMarker = null, measureTimer = null;
+function clearMeasure(){
+  if (measureLine){ map.removeLayer(measureLine); measureLine = null; }
+  if (measureMarker){ map.removeLayer(measureMarker); measureMarker = null; }
+}
+map.on('click', function(e){
+  if (calMode) return;
+  if (!lastPx){ return; }
+  var p = latLngToPx(e.latlng);
+  var dpx = Math.hypot(p[0]-lastPx[0], p[1]-lastPx[1]);
+  var meters = dpx / PX_PER_M;
+  var yards = meters * 1.09361;
+  var txt = yards >= 1000
+    ? (yards/1760).toFixed(2) + ' mi'
+    : Math.round(yards) + '';
+  clearMeasure();
+  measureLine = L.polyline([pxToLatLng(lastPx[0], lastPx[1]), e.latlng],
+    { color:'#cd7f35', weight:2.5, dashArray:'6 7', opacity:.95, interactive:false }).addTo(map);
+  var html = yards >= 1000
+    ? '<span class="yd">' + txt + '</span> <small>from you</small>'
+    : '<span class="yd">' + txt + ' yds</span> <small>' + Math.round(meters) + ' m from you</small>';
+  measureMarker = L.marker(e.latlng, { interactive:false, icon: L.divIcon({ className:'', iconSize:[0,0], html:'<div class="measure-bubble">' + html + '</div>' }) }).addTo(map);
+  clearTimeout(measureTimer);
+  measureTimer = setTimeout(clearMeasure, 6000);
+});
+
+/* ============ quick-jump chips ============ */
+document.querySelectorAll('.chip[data-goto]').forEach(function(ch){
+  ch.addEventListener('click', function(){
+    var v = ch.getAttribute('data-goto').split(',').map(Number);
+    setFollow(false, true);
+    map.flyTo(pxToLatLng(v[0], v[1]), v[2], { duration:.9 });
+  });
+});
+$('chip-whole').addEventListener('click', function(){
+  setFollow(false, true);
+  map.flyToBounds(bounds, { duration:.9 });
+});
+
+/* ============ boot ============ */
+setFollow(true, true);
+startGPS();
+if (demo) toast('Demo mode — simulated walk of the course', 3600);
+})();
+</script>
